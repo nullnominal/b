@@ -28,10 +28,11 @@ use jimp::*;
 
 const GARBAGE_FOLDER: *const c_char = c!("./build/tests/");
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum TestState {
     Enabled,
     Disabled,
+    Historical
 }
 
 pub unsafe fn test_state_deserialize(jimp: *mut Jimp) -> Option<TestState> {
@@ -40,6 +41,8 @@ pub unsafe fn test_state_deserialize(jimp: *mut Jimp) -> Option<TestState> {
         Some(TestState::Enabled)
     } else if strcmp((*jimp).string, c!("Disabled")) == 0 {
         Some(TestState::Disabled)
+    } else if strcmp((*jimp).string, c!("Historical")) == 0 {
+        Some(TestState::Historical)
     } else {
         jimp_unknown_member(jimp); // TODO: jimp_unknown_member() is not appropriate here, but it works cause it reports on jimp->string
         None
@@ -48,8 +51,9 @@ pub unsafe fn test_state_deserialize(jimp: *mut Jimp) -> Option<TestState> {
 
 pub unsafe fn test_state_serialize(jim: *mut Jim, test_state: TestState) {
     match test_state {
-        TestState::Enabled  => jim_string(jim, c!("Enabled")),
-        TestState::Disabled => jim_string(jim, c!("Disabled")),
+        TestState::Enabled    => jim_string(jim, c!("Enabled")),
+        TestState::Disabled   => jim_string(jim, c!("Disabled")),
+        TestState::Historical => jim_string(jim, c!("Historical"))
     }
 }
 
@@ -65,7 +69,7 @@ pub unsafe fn test_config_serialize(jim: *mut Jim, test_config: TestConfig) {
         jim_member_key(jim, c!("expected_stdout"));
         jim_string(jim, test_config.expected_stdout);
         jim_member_key(jim, c!("state"));
-        test_state_serialize(jim, test_config.state);
+    test_state_serialize(jim, test_config.state);
         jim_member_key(jim, c!("comment"));
         jim_string(jim, test_config.comment);
     jim_object_end(jim);
@@ -122,6 +126,7 @@ pub unsafe fn execute_test(
     test_folder: *const c_char, name: *const c_char, target: Target,
     // Outputs
     cmd: *mut Cmd, sb: *mut String_Builder,
+    state: TestState,
 ) -> Option<Outcome> {
     // TODO: add timeouts for running and building in case they go into infinite loop or something
     let input_path = temp_sprintf(c!("%s/%s.b"), test_folder, name);
@@ -141,6 +146,12 @@ pub unsafe fn execute_test(
         input_path,
         c!("-t"), name_of_target(target).unwrap(),
         c!("-o"), program_path,
+    }
+    if matches!(state, TestState::Historical {..}) {
+        cmd_append! {
+            cmd,
+            c!("-hist"),
+        }
     }
     if !cmd_run_sync_and_reset(cmd) {
         return Some(Outcome::BuildFail);
@@ -242,7 +253,7 @@ pub unsafe fn print_bottom_labels(targets: *const [Target], stats_by_target: *co
 
 pub unsafe fn record_tests(
     // Inputs
-    test_folder: *const c_char, cases: *const [*const c_char], targets: *const [Target],
+    test_folder: *const c_char, cases: *const [*const c_char], targets: *const [Target], historical: bool,
     // Outputs
     cmd: *mut Cmd, sb: *mut String_Builder,
     reports: *mut Array<Report>, stats_by_target: *mut Array<ReportStats>,
@@ -274,12 +285,12 @@ pub unsafe fn record_tests(
                 &target,
             ) {
                 match (*test_config).state {
-                    TestState::Enabled => {
+                    TestState::Enabled | TestState::Historical => {
                         let outcome = execute_test(
                             // Inputs
                             test_folder, case_name, target,
                             // Outputs
-                            cmd, sb,
+                            cmd, sb, (*test_config).state
                         )?;
                         match outcome {
                             Outcome::BuildFail => da_append(&mut report.statuses, ReportStatus::BuildFail),
@@ -297,7 +308,7 @@ pub unsafe fn record_tests(
                     // Inputs
                     test_folder, case_name, target,
                     // Outputs
-                    cmd, sb,
+                    cmd, sb, if historical { TestState::Historical } else { TestState::Enabled }
                 )?;
                 match outcome {
                     Outcome::BuildFail => {
@@ -312,7 +323,7 @@ pub unsafe fn record_tests(
                     Outcome::RunFail => {
                         let new_test_config = TestConfig {
                             expected_stdout: c!(""),
-                            state: TestState::Enabled,
+                            state: if historical { TestState::Historical } else { TestState::Enabled },
                             comment: c!("Failed to run on record"),
                         };
                         da_append(&mut target_test_config_table, (target, new_test_config));
@@ -321,7 +332,7 @@ pub unsafe fn record_tests(
                     Outcome::RunSuccess{stdout} => {
                         let new_test_config = TestConfig {
                             expected_stdout: stdout,
-                            state: TestState::Enabled,
+                            state: if historical { TestState::Historical } else { TestState::Enabled },
                             comment: c!(""),
                         };
                         da_append(&mut target_test_config_table, (target, new_test_config));
@@ -476,12 +487,12 @@ pub unsafe fn replay_tests(
             );
             if let Some(test_config) = test_config {
                 match (*test_config).state {
-                    TestState::Enabled => {
+                    TestState::Enabled | TestState::Historical => {
                         let outcome = execute_test(
                             // Inputs
                             test_folder, case_name, target,
                             // Outputs
-                            cmd, sb,
+                            cmd, sb, (*test_config).state
                         )?;
                         match outcome {
                             Outcome::RunSuccess{stdout} =>
@@ -508,7 +519,7 @@ pub unsafe fn replay_tests(
                     // Inputs
                     test_folder, case_name, target,
                     // Outputs
-                    cmd, sb,
+                    cmd, sb, TestState::Enabled
                 )?;
 
                 match outcome {
@@ -538,6 +549,7 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
     let test_folder  = flag_str(c!("dir"), c!("./tests/"), c!("Test folder"));
     let help         = flag_bool(c!("help"), false, c!("Print this help message"));
     let record       = flag_bool(c!("record"), false, c!("Record test cases instead of replaying them"));
+    let hist         = flag_bool(c!("hist"), false, c!("Record the tests in historical mode. Requires -record."));
     // TODO: select test cases and targets by a glob pattern
     // See if https://github.com/tsoding/glob.h can be used here
 
@@ -620,9 +632,9 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
     if *record {
         record_tests(
             // Inputs
-            *test_folder, da_slice(cases), da_slice(targets),
+            *test_folder, da_slice(cases), da_slice(targets), *hist,
             // Outputs
-            &mut cmd, &mut sb, &mut reports, &mut stats_by_target, &mut jim, &mut jimp,
+            &mut cmd, &mut sb, &mut reports, &mut stats_by_target, &mut jim, &mut jimp
         )?;
     } else {
         replay_tests(

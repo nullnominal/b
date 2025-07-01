@@ -1,0 +1,37 @@
+{
+    "fasm-x86_64-windows": {
+        "expected_stdout": "016",
+        "state": "Historical",
+        "comment": ""
+    },
+    "fasm-x86_64-linux": {
+        "expected_stdout": "016",
+        "state": "Historical",
+        "comment": ""
+    },
+    "gas-x86_64-windows": {
+        "expected_stdout": "016",
+        "state": "Historical",
+        "comment": ""
+    },
+    "gas-x86_64-linux": {
+        "expected_stdout": "016",
+        "state": "Historical",
+        "comment": ""
+    },
+    "gas-aarch64-linux": {
+        "expected_stdout": "016",
+        "state": "Historical",
+        "comment": ""
+    },
+    "uxn": {
+        "expected_stdout": "",
+        "state": "Disabled",
+        "comment": "Hex literals in stdlib make it impossible to build with historical mode"
+    },
+    "6502": {
+        "expected_stdout": "",
+        "state": "Disabled",
+        "comment": "Hex literals in stdlib make it impossible to build with historical mode"
+    }
+}
