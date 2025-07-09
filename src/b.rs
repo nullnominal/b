@@ -1818,8 +1818,8 @@ pub unsafe fn main(mut argc: i32, mut argv: *mut*mut c_char) -> Option<()> {
             }
         }
         Target::Bytecode => {
-            let mut IR_Output: Array<u8> = zeroed();
-            codegen::bytecode::generate_program(&mut IR_Output, &c);
+            let mut ir_output: String_Builder = zeroed();
+            codegen::bytecode::generate_program(&mut ir_output, &c);
 
             let effective_output_path;
             if (*output_path).is_null() {
@@ -1830,10 +1830,10 @@ pub unsafe fn main(mut argc: i32, mut argv: *mut*mut c_char) -> Option<()> {
                 effective_output_path = *output_path;
             }
 
-            write_entire_file(effective_output_path, IR_Output.items as *const c_void, IR_Output.count)?;
+            write_entire_file(effective_output_path, ir_output.items as *const c_void, ir_output.count)?;
             printf(c!("INFO: Generated %s\n"), effective_output_path);
             if *run {
-                todo!("Interpret the IR?");
+                runner::bytecode::run(&mut cmd, &mut ir_output, effective_output_path, None)?;
             }
         }
     }
