@@ -9,12 +9,10 @@ pub mod crust;
 #[macro_use]
 pub mod nob;
 pub mod targets;
-pub mod runner;
 pub mod flag;
 pub mod glob;
 pub mod jim;
 pub mod jimp;
-pub mod lexer;
 
 use core::ffi::*;
 use core::cmp;
@@ -23,7 +21,6 @@ use core::ptr;
 use crust::libc::*;
 use nob::*;
 use targets::*;
-use runner::mos6502::{Config, DEFAULT_LOAD_OFFSET};
 use flag::*;
 use glob::*;
 use jim::*;
@@ -123,7 +120,7 @@ pub struct Report {
 
 pub unsafe fn execute_test(
     // Inputs
-    test_folder: *const c_char, name: *const c_char, target: Target,
+    test_folder: *const c_char, name: *const c_char, target: Target, quiet: bool,
     // Outputs
     cmd: *mut Cmd, sb: *mut String_Builder,
 ) -> Option<Outcome> {
@@ -136,40 +133,59 @@ pub unsafe fn execute_test(
         Target::Gas_x86_64_Linux    => c!("gas-x86_64-linux"),
         Target::Gas_x86_64_Windows  => c!("exe"),
         Target::Uxn                 => c!("rom"),
-        Target::Mos6502             => c!("6502"),
+        Target::Mos6502_Posix       => c!("6502"),
         // TODO: ILasm_Mono may collide with Gas_x86_64_Windows if we introduce parallel runner
         Target::ILasm_Mono          => c!("exe"),
     });
     let stdout_path = temp_sprintf(c!("%s/%s.%s.stdout.txt"), GARBAGE_FOLDER, name, target.name());
     cmd_append! {
         cmd,
-        c!("./build/b"),
+        if cfg!(target_os = "windows") {
+            c!("./build/b.exe")
+        } else {
+            c!("./build/b")
+        },
         input_path,
         c!("-t"), target.name(),
         c!("-o"), program_path,
     }
+    if quiet {
+        cmd_append! { cmd, c!("-q") }
+    }
     if !cmd_run_sync_and_reset(cmd) {
         return Some(Outcome::BuildFail);
     }
-    let run_result = match target {
-        Target::Gas_AArch64_Linux   => runner::gas_aarch64_linux::run(cmd, program_path, &[], Some(stdout_path)),
-        Target::Gas_AArch64_Darwin  => runner::gas_aarch64_darwin::run(cmd, program_path, &[], Some(stdout_path)),
-        Target::Gas_x86_64_Linux    => runner::gas_x86_64_linux::run(cmd, program_path, &[], Some(stdout_path)),
-        Target::Gas_x86_64_Windows  => runner::gas_x86_64_windows::run(cmd, program_path, &[], Some(stdout_path)),
-        Target::Gas_x86_64_Darwin   => runner::gas_x86_64_darwin::run(cmd, program_path, &[], Some(stdout_path)),
-        Target::Uxn                 => runner::uxn::run(cmd, c!("uxncli"), program_path, &[], Some(stdout_path)),
-        Target::Mos6502             => runner::mos6502::run(sb, Config {
-            load_offset: DEFAULT_LOAD_OFFSET
-        }, program_path, Some(stdout_path)),
-        Target::ILasm_Mono          => runner::ilasm_mono::run(cmd, program_path, &[], Some(stdout_path)),
-    };
+
+    cmd_append! {
+        cmd,
+        if cfg!(target_os = "windows") {
+            c!("./build/b.exe")
+        } else {
+            c!("./build/b")
+        },
+        input_path,
+        c!("-t"), target.name(),
+        c!("-o"), program_path,
+        c!("-q"),
+        c!("-nobuild"),
+        c!("-run"),
+    }
+    if matches!(target, Target::Uxn) {
+        cmd_append!(cmd, c!("-C"), c!("runner=uxncli"));
+    }
+    let mut fdout = fd_open_for_write(stdout_path);
+    let mut redirect: Cmd_Redirect = zeroed();
+    redirect.fdout = &mut fdout;
+    let run_ok = cmd_run_sync_redirect_and_reset(cmd, redirect);
 
     (*sb).count = 0;
     read_entire_file(stdout_path, sb)?; // Should always succeed, but may fail if stdout_path is a directory for instance.
     da_append(sb, 0);                   // NULL-terminating the stdout
-    printf(c!("%s"), (*sb).items);      // Forward stdout for diagnostic purposes
+    if !quiet {
+        printf(c!("%s"), (*sb).items);      // Forward stdout for diagnostic purposes
+    }
 
-    if run_result.is_none() {
+    if !run_ok {
         Some(Outcome::RunFail)
     } else {
         Some(Outcome::RunSuccess{stdout: strdup((*sb).items)}) // TODO: memory leak
@@ -177,6 +193,7 @@ pub unsafe fn execute_test(
 }
 
 pub unsafe fn usage() {
+    fprintf(stderr(), c!("B Compiler Testing Tool\n"));
     fprintf(stderr(), c!("Usage: %s [OPTIONS]\n"), flag_program_name());
     fprintf(stderr(), c!("OPTIONS:\n"));
     flag_print_options(stderr());
@@ -263,7 +280,7 @@ pub unsafe fn matches_glob(pattern: *const c_char, text: *const c_char) -> Optio
 
 pub unsafe fn record_tests(
     // Inputs
-    test_folder: *const c_char, cases: *const [*const c_char], targets: *const [Target], tt: *mut TestTable,
+    test_folder: *const c_char, cases: *const [*const c_char], targets: *const [Target], tt: *mut TestTable, quiet: bool,
     // Outputs
     cmd: *mut Cmd, sb: *mut String_Builder,
     reports: *mut Array<Report>, stats_by_target: *mut Array<ReportStats>,
@@ -285,7 +302,7 @@ pub unsafe fn record_tests(
                     TestState::Enabled => {
                         let outcome = execute_test(
                             // Inputs
-                            test_folder, case_name, target,
+                            test_folder, case_name, target, quiet,
                             // Outputs
                             cmd, sb,
                         )?;
@@ -303,7 +320,7 @@ pub unsafe fn record_tests(
             } else {
                 let outcome = execute_test(
                     // Inputs
-                    test_folder, case_name, target,
+                    test_folder, case_name, target, quiet,
                     // Outputs
                     cmd, sb,
                 )?;
@@ -424,7 +441,7 @@ pub unsafe fn load_tt_from_json_file_if_exists(
 ) -> Option<TestTable> {
     let mut tt: TestTable = zeroed();
     if file_exists(json_path)? {
-        printf(c!("INFO: loading file %s...\n"), json_path);
+        log(Log_Level::INFO, c!("loading file %s..."), json_path);
         // TODO: file may stop existing between file_exists() and read_entire_file() cools
         // It would be much better if read_entire_file() returned the reason of failure so
         // it's easy to check if it failed due to ENOENT, but that requires significant
@@ -457,10 +474,6 @@ pub unsafe fn load_tt_from_json_file_if_exists(
                         target = Some(parsed_target);
                     } else {
                         jimp_diagf(jimp, c!("WARNING: invalid target name `%s`\n"), (*jimp).string);
-                        jimp_diagf(jimp, c!("NOTE: Expected target values are:\n"));
-                        for i in 0..TARGET_ORDER.len() {
-                            jimp_diagf(jimp, c!("NOTE:  %s\n"), (*TARGET_ORDER)[i]);
-                        }
                     }
                     continue 'row;
                 }
@@ -475,10 +488,6 @@ pub unsafe fn load_tt_from_json_file_if_exists(
                         state = parsed_state;
                     } else {
                         jimp_diagf(jimp, c!("WARNING: invalid state name `%s`\n"), (*jimp).string);
-                        jimp_diagf(jimp, c!("NOTE: Expected state values are:\n"));
-                        for i in 0..TEST_STATE_ORDER.len() {
-                            jimp_diagf(jimp, c!("NOTE:  %s\n"), (*TEST_STATE_ORDER)[i]);
-                        }
                     }
                     continue 'row;
                 }
@@ -495,14 +504,14 @@ pub unsafe fn load_tt_from_json_file_if_exists(
 
             let Some(target) = target else {
                 (*jimp).token_start = saved_point;
-                jimp_diagf(jimp, c!("ERROR: `target` is not defined for this test row. Ignoring the entire row...\n"));
+                jimp_diagf(jimp, c!("WARNING: no valid `target` field is defined for this test row. Ignoring the entire row...\n"));
                 // TODO: memory leak, we are dropping the whole row here
                 continue 'table;
             };
 
             if case_name.is_null() {
                 (*jimp).token_start = saved_point;
-                jimp_diagf(jimp, c!("ERROR: `case_name` is not defined for this test row. Ignoring the entire row...\n"));
+                jimp_diagf(jimp, c!("WARNING: no valid `case_name` field is defined for this test row. Ignoring the entire row...\n"));
                 // TODO: memory leak, we are dropping the whole row here
                 continue 'table;
             }
@@ -535,7 +544,7 @@ pub unsafe fn load_tt_from_json_file_if_exists(
         }
         jimp_array_end(jimp)?;
     } else {
-        printf(c!("INFO: %s doesn't exist. Nothing to load.\n"), json_path);
+        log(Log_Level::INFO, c!("%s doesn't exist. Nothing to load."), json_path);
     }
     Some(tt)
 }
@@ -544,7 +553,7 @@ pub unsafe fn save_tt_to_json_file(
     json_path: *const c_char, tt: TestTable,
     jim: *mut Jim,
 ) -> Option<()> {
-    printf(c!("INFO: saving file %s...\n"), json_path);
+    log(Log_Level::INFO, c!("saving file %s..."), json_path);
     jim_begin(jim);
     jim_array_begin(jim);
     for i in 0..tt.count {
@@ -573,7 +582,7 @@ pub unsafe fn save_tt_to_json_file(
 pub unsafe fn replay_tests(
     // TODO: The Inputs and the Outputs want to be their own entity. But what should they be called?
     // Inputs
-    test_folder: *const c_char, cases: *const [*const c_char], targets: *const [Target], mut tt: TestTable,
+    test_folder: *const c_char, cases: *const [*const c_char], targets: *const [Target], mut tt: TestTable, quiet: bool,
     // Outputs
     cmd: *mut Cmd, sb: *mut String_Builder, reports: *mut Array<Report>, stats_by_target: *mut Array<ReportStats>, jim: *mut Jim,
 ) -> Option<()> {
@@ -595,7 +604,7 @@ pub unsafe fn replay_tests(
                     TestState::Enabled => {
                         let outcome = execute_test(
                             // Inputs
-                            test_folder, case_name, target,
+                            test_folder, case_name, target, quiet,
                             // Outputs
                             cmd, sb,
                         )?;
@@ -622,7 +631,7 @@ pub unsafe fn replay_tests(
             } else {
                 let outcome = execute_test(
                     // Inputs
-                    test_folder, case_name, target,
+                    test_folder, case_name, target, quiet,
                     // Outputs
                     cmd, sb,
                 )?;
@@ -696,6 +705,7 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
     let comment              = flag_str(c!("comment"), ptr::null(), strdup(temp_sprintf(c!("Set the comment on disabled test cases when you do `-%s %s`"), flag_name(action_flag), Action::Disable.name()))); // TODO: memory leak
 
     let test_folder          = flag_str(c!("dir"), c!("./tests/"), c!("Test folder"));
+    let quiet                = flag_bool(c!("q"), false, c!("Makes the test runner yap less about what it's doing"));
     let help                 = flag_bool(c!("help"), false, c!("Print this help message"));
 
     if !flag_parse(argc, argv) {
@@ -746,6 +756,10 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
             };
         }
         return Some(());
+    }
+
+    if *quiet {
+        minimal_log_level = Log_Level::WARNING;
     }
 
     let mut sb: String_Builder = zeroed();
@@ -873,7 +887,7 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
             let mut tt = load_tt_from_json_file_if_exists(json_path, *test_folder, &mut sb, &mut jimp)?;
             record_tests(
                 // Inputs
-                *test_folder, da_slice(cases), da_slice(targets), &mut tt,
+                *test_folder, da_slice(cases), da_slice(targets), &mut tt, *quiet,
                 // Outputs
                 &mut cmd, &mut sb, &mut reports, &mut stats_by_target,
             )?;
@@ -883,7 +897,7 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
             let tt = load_tt_from_json_file_if_exists(json_path, *test_folder, &mut sb, &mut jimp)?;
             replay_tests(
                 // Inputs
-                *test_folder, da_slice(cases), da_slice(targets), tt,
+                *test_folder, da_slice(cases), da_slice(targets), tt, *quiet,
                 // Outputs
                 &mut cmd, &mut sb, &mut reports, &mut stats_by_target, &mut jim,
             );
@@ -910,7 +924,7 @@ pub unsafe fn main(argc: i32, argv: *mut*mut c_char) -> Option<()> {
                 let case_name = *cases.items.add(i);
                 for j in 0..targets.count {
                     let target = *targets.items.add(j);
-                    printf(c!("INFO: disabling %-*s for %-*s\n"), case_width, case_name, target_width, target.name());
+                    log(Log_Level::INFO, c!("disabling %-*s for %-*s"), case_width, case_name, target_width, target.name());
                     if let Some(row) = test_table_find_row(&mut tt, case_name, target) {
                         (*row).state = TestState::Disabled;
                         if !(*comment).is_null() {

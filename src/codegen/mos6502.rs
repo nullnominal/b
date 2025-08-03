@@ -13,9 +13,9 @@ use crate::ir::*;
 use crate::nob::*;
 use crate::diagf;
 use crate::crust::libc::*;
-use crate::runner::mos6502::{Config, DEFAULT_LOAD_OFFSET};
 use crate::lexer::{is_identifier_start, is_identifier};
 use crate::arena::{self, Arena};
+use crate::codegen::*;
 
 // TODO: does this have to be a macro?
 macro_rules! instr_enum {
@@ -1528,29 +1528,6 @@ pub unsafe fn generate_entry(out: *mut String_Builder, asm: *mut Assembler) {
     instr16(out, JMP, IND, 0xFFFC);
 }
 
-pub unsafe fn parse_config_from_link_flags(link_flags: *const[*const c_char]) -> Option<Config> {
-    let mut config = Config {
-        load_offset: DEFAULT_LOAD_OFFSET,
-    };
-
-    // TODO: some sort of help flag to list all these "linker" flags for mos6502
-    for i in 0..link_flags.len() {
-        let flag = (*link_flags)[i];
-        let mut flag_sv = sv_from_cstr(flag);
-        let load_offset_prefix = sv_from_cstr(c!("LOAD_OFFSET="));
-        if sv_starts_with(flag_sv, load_offset_prefix) {
-            flag_sv.data = flag_sv.data.add(load_offset_prefix.count);
-            flag_sv.count += load_offset_prefix.count;
-            config.load_offset = strtoull(flag_sv.data, ptr::null_mut(), 16) as u16;
-        } else {
-            log(Log_Level::ERROR, c!("6502: Unknown linker flag: %s"), flag);
-            return None
-        }
-    }
-
-    Some(config)
-}
-
 pub unsafe fn generate_asm_funcs(out: *mut String_Builder, asm_funcs: *const [AsmFunc],
                                  asm: *mut Assembler) {
     for i in 0..asm_funcs.len() {
@@ -1566,16 +1543,68 @@ pub unsafe fn generate_asm_funcs(out: *mut String_Builder, asm_funcs: *const [As
     }
 }
 
-pub unsafe fn generate_program(out: *mut String_Builder, p: *const Program, config: Config) -> Option<()> {
+pub unsafe fn usage(params: *const [Param]) {
+    fprintf(stderr(), c!("mos6402 codegen for the B compiler\n"));
+    fprintf(stderr(), c!("OPTIONS:\n"));
+    print_params_help(params);
+}
+
+struct Mos6502 {
+    load_offset: u64,
+    out: String_Builder,
+    cmd: Cmd,
+}
+
+pub unsafe fn new(a: *mut arena::Arena, args: *const [*const c_char]) -> Option<*mut c_void> {
+    let gen = arena::alloc_type::<Mos6502>(a);
+    memset(gen as _ , 0, size_of::<Mos6502>());
+
+    let mut help = false;
+    let params = &[
+        Param {
+            name:        c!("help"),
+            description: c!("Print this help message"),
+            value:       ParamValue::Flag { var: &mut help },
+        },
+        Param {
+            name:        c!("LOAD_OFFSET"),
+            description: c!("Offset at which the rom is expected to be loaded"),
+            value:       ParamValue::Hex { var: &mut (*gen).load_offset, default: 0x8000 },
+        },
+    ];
+
+    if let Err(message) = parse_args(params, args) {
+        usage(params);
+        log(Log_Level::ERROR, c!("%s"), message);
+        return None;
+    }
+
+    if help {
+        usage(params);
+        return None;
+    }
+
+    Some(gen as *mut c_void)
+}
+
+pub unsafe fn generate_program(
+    gen: *mut c_void, p: *const Program, program_path: *const c_char, _garbage_base: *const c_char,
+    _nostdlib: bool, debug: bool,
+) -> Option<()> {
+    let gen = gen as *mut Mos6502;
+    let out = &mut (*gen).out;
+
+    if debug { todo!("Debug information for 6502") }
+
     let mut asm: Assembler = zeroed();
     generate_entry(out, &mut asm);
-    asm.code_start = config.load_offset;
+    asm.code_start = (*gen).load_offset as u16;
 
     generate_funcs(out, da_slice((*p).funcs), &mut asm);
     generate_asm_funcs(out, da_slice((*p).asm_funcs), &mut asm);
     generate_extrns(out, da_slice((*p).extrns), da_slice((*p).funcs), da_slice((*p).globals), da_slice((*p).asm_funcs), &mut asm);
 
-    let data_start = config.load_offset + (*out).count as u16;
+    let data_start = (*gen).load_offset as u16 + (*out).count as u16;
     generate_data_section(out, da_slice((*p).data));
     generate_globals(out, da_slice((*p).globals), &mut asm);
 
@@ -1583,5 +1612,26 @@ pub unsafe fn generate_program(out: *mut String_Builder, p: *const Program, conf
     apply_relocations(out, data_start, &mut asm);
     arena::reset(&mut asm.string_arena);
 
+    write_entire_file(program_path, (*out).items as *const c_void, (*out).count)?;
+    log(Log_Level::INFO, c!("generated %s"), program_path);
+
+    Some(())
+}
+
+pub unsafe fn run_program(
+    gen: *mut c_void, program_path: *const c_char, run_args: *const [*const c_char],
+) -> Option<()> {
+    let gen = gen as *mut Mos6502;
+    let cmd = &mut (*gen).cmd;
+    cmd_append!{
+        cmd,
+        c!("posix6502"), c!("-load-offset"), temp_sprintf(c!("%u"), (*gen).load_offset as c_uint),
+        program_path
+    }
+    if run_args.len() > 0 {
+        cmd_append!(cmd, c!("--"));
+        da_append_many(cmd, run_args);
+    }
+    if !cmd_run_sync_and_reset(cmd) { return None; }
     Some(())
 }
