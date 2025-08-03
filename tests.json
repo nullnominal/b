@@ -2080,7 +2080,7 @@
     },
     {
         "case": "asm_uxn",
-        "target": "6502",
+        "target": "6502-posix",
         "expected_stdout": "",
         "state": "Disabled",
         "comment": "Doesn't make sense for this target"
@@ -2136,7 +2136,7 @@
     },
     {
         "case": "asm_func_uxn",
-        "target": "6502",
+        "target": "6502-posix",
         "expected_stdout": "",
         "state": "Disabled",
         "comment": "Doesn't make sense for this target"
