@@ -1060,6 +1060,7 @@ pub unsafe fn compile_program(l: *mut Lexer, c: *mut Compiler) -> Option<()> {
 
                         let mut global = Global {
                             name,
+                            name_loc,
                             values: zeroed(),
                             is_vec: false,
                             minimum_size: 0,
