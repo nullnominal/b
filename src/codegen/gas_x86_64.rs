@@ -672,11 +672,11 @@ pub unsafe fn generate_program(
     gen: *mut c_void, program: *const Program, program_path: *const c_char, garbage_base: *const c_char, os: Os,
     nostdlib: bool, debug: bool,
 ) -> Option<()> {
-    if debug { generate_debuginfo(output, (*program).funcs, (*program).globals, os); }
-
     let gen = gen as *mut Gas_x86_64;
     let output = &mut (*gen).output;
     let cmd = &mut (*gen).cmd;
+
+    if debug { generate_debuginfo(output, (*program).funcs, (*program).globals, os); }
 
     match os {
         Os::Darwin => sb_appendf(output, c!(".text\n")),
