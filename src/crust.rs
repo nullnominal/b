@@ -3,14 +3,14 @@ use crate::crust::libc::*;
 use core::panic::PanicInfo;
 use core::ffi::*;
 
-// #[macro_export]
+#[macro_export]
 macro_rules! c {
     ($l:expr) => {
         concat!($l, "\0").as_ptr() as *const c_char
     }
 }
 
-// #[macro_export]
+#[macro_export]
 macro_rules! enum_with_order {
     (
         #[derive($($traits:tt)*)]

@@ -62,7 +62,7 @@ pub unsafe fn da_append_many<T: Clone + Copy>(xs: *mut Array<T>, items: *const [
     }
 }
 
-// #[macro_export]
+#[macro_export]
 macro_rules! shift {
     ($ptr:ident, $len:ident) => {{
         let result = *$ptr;
@@ -74,7 +74,7 @@ macro_rules! shift {
 
 pub type Cmd = Array<*const c_char>;
 
-// #[macro_export]
+#[macro_export]
 macro_rules! cmd_append {
     ($cmd:expr, $($arg:expr),+ $(,)?) => {
         $(da_append($cmd, $arg);)+
