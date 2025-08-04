@@ -135,7 +135,6 @@ pub struct Program {
     pub asm_funcs: Array<AsmFunc>,
 }
 
-
 pub unsafe fn dump_arg_call(arg: Arg, output: *mut String_Builder) {
     match arg {
         Arg::RefExternal(name) | Arg::External(name) => {

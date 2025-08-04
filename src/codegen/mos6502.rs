@@ -15,7 +15,8 @@ use crate::diagf;
 use crate::crust::libc::*;
 use crate::lexer::{is_identifier_start, is_identifier};
 use crate::arena::{self, Arena};
-use crate::codegen::*;
+use crate::targets::TargetAPI;
+use crate::params::*;
 
 // TODO: does this have to be a macro?
 macro_rules! instr_enum {
@@ -1553,6 +1554,16 @@ struct Mos6502 {
     load_offset: u64,
     out: String_Builder,
     cmd: Cmd,
+}
+
+pub unsafe fn get_apis(targets: *mut Array<TargetAPI>) {
+    da_append(targets, TargetAPI {
+        name: c!("6502-posix"),
+        file_ext: c!(".6502"),
+        new,
+        build: generate_program,
+        run: run_program,
+    });
 }
 
 pub unsafe fn new(a: *mut arena::Arena, args: *const [*const c_char]) -> Option<*mut c_void> {
