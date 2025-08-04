@@ -138,7 +138,7 @@ def parse_global(f):
     return var
 
 subprocess.run("make")
-subprocess.run(["./build/b", "-t", "bytecode", "-o", "./build/bytecode.ir", sys.argv[1]])
+subprocess.run(["./build/b", "-t", "bytecode", "-o", "./build/bytecode.ir", sys.argv[1], "./libb/gas-x86_64-linux.b"])
 
 with open("./build/bytecode.ir", 'rb') as f:
     bcode = {}

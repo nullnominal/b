@@ -59,6 +59,8 @@ use crate::ir::*;
 use crate::crust::libc::*;
 use crate::lexer::Loc;
 use core::mem::zeroed;
+use crate::arena;
+use crate::TargetAPI;
 
 pub unsafe fn dump_arg_call(arg: Arg, output: *mut Array<u8>, string_table: *mut Array<*const c_char>) {
     match arg {
@@ -345,5 +347,33 @@ pub unsafe fn generate_program(output: *mut Array<u8>, program: *const Program) 
     append_u64(output, globals_pos.try_into().unwrap());
     append_u64(output, funcs_pos.try_into().unwrap());
     append_u64(output, string_table_pos.try_into().unwrap());
+}
+
+struct Bytecode {
+    output: Array<u8>,
+}
+
+pub unsafe fn get_apis(targets: *mut Array<TargetAPI>) {
+    da_append(targets, TargetAPI {
+        name: c!("bytecode"),
+        file_ext: c!("ir"),
+        new,
+        build: |gen, program, program_path, garbage_base, nostdlib, debug| {
+            let output = &mut (*(gen as *mut Bytecode)).output;
+            let ret = generate_program(output, program); 
+            write_entire_file(program_path, output.items as *const c_void, output.count);
+            Some(ret)
+        },
+        run: |gen, program_path, run_args| {
+            todo!()
+        },
+    });
+}
+
+pub unsafe fn new(a: *mut arena::Arena, args: *const [*const c_char]) -> Option<*mut c_void> {
+    let gen = arena::alloc_type::<Bytecode>(a);
+    memset(gen as _ , 0, size_of::<Bytecode>());
+
+    Some(gen as *mut c_void)
 }
 
