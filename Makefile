@@ -89,6 +89,9 @@ $(BUILD)/b.exe: $(RSS) $(MINGW32_OBJS) $(SRC)/codegen/.INDEX.rs | $(BUILD)
 $(BUILD)/btest.exe: $(SRC)/btest.rs $(RSS) $(MINGW32_OBJS) $(SRC)/codegen/.INDEX.rs | $(BUILD)
 	rustc $(CRUST_FLAGS) --target x86_64-pc-windows-gnu -C link-args="$(MINGW32_OBJS) -lmingwex -lmsvcrt -lkernel32" $(SRC)/btest.rs -o $(BUILD)/btest.exe
 
+$(BUILD)/bgen.exe: $(SRC)/bgen.rs $(RSS) $(MINGW32_OBJS) | $(BUILD)
+	rustc $(CRUST_FLAGS) --target x86_64-pc-windows-gnu -C link-args="$(MINGW32_OBJS) -lmingwex -lmsvcrt -lkernel32" $(SRC)/bgen.rs -o $(BUILD)/bgen.exe
+
 $(BUILD)/%.mingw32.o: ./thirdparty/%.c | $(BUILD)
 	x86_64-w64-mingw32-gcc -fPIC -g -c $< -o $@
 
