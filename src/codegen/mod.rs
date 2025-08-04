@@ -31,4 +31,5 @@ codegens! {
     uxn,
     mos6502,
     ilasm_mono,
+    noop,
 }
