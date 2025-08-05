@@ -68,10 +68,10 @@ $(BUILD)/btest: $(SRC)/btest.rs $(RSS) $(POSIX_OBJS) $(SRC)/codegen/.INDEX.rs | 
 	rustc $(CRUST_FLAGS) -C link-args="$(POSIX_OBJS) $(LDFLAGS)" $(SRC)/btest.rs -o $(BUILD)/btest
 
 ifneq ($(OS),Windows_NT)
-$(SRC)/codegen/.INDEX.rs: $(BUILD)/bgen
+$(SRC)/codegen/.INDEX.rs: $(BUILD)/bgen $(SRC)/codegen
 	$(BUILD)/bgen
 else
-$(SRC)/codegen/.INDEX.rs: $(BUILD)/bgen.exe
+$(SRC)/codegen/.INDEX.rs: $(BUILD)/bgen.exe $(SRC)/codegen
 	$(BUILD)/bgen.exe
 endif
 
