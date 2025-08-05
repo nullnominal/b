@@ -1,3 +1,7 @@
+//! The meta-program that analyses <root>/src/codegen/ folder and makes the custom pluggable codegens
+//! available to b and btest.
+//!
+//! Rust's proc macros suck btw jfyi
 #![no_main]
 #![no_std]
 #![allow(non_upper_case_globals)]
