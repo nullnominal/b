@@ -1312,8 +1312,14 @@ pub unsafe fn main(mut argc: i32, mut argv: *mut*mut c_char) -> Option<()> {
 
     if !*nobuild {
         if !*nostdlib {
-            // TODO: consider more paths
-            add_libb_files(c!("./libb"), *target_name, &mut input_paths, &mut c);
+            // TODO: should be probably a list libb paths which we sequentually probe to find which one exists.
+            //   And of course we should also enable the user to append additional paths via the command line.
+            //   Paths to potentially check by default:
+            //   - Current working directory
+            //   - Some system paths like /usr/include/libb on Linux? (Not 100% sure about this one)
+            //   - Some sort of instalation prefix? (Requires making build system more complicated)
+            //
+            //     - rexim (2025-06-12 20:56:08)
             add_libb_files(arena::sprintf(&mut c.arena, c!("%s/libb/"), executable_directory), *target_name, &mut input_paths, &mut c);
         }
 
