@@ -52,14 +52,14 @@ MINGW32_OBJS=\
 	$(BUILD)/shlex.mingw32.o \
 
 .PHONY: all
-all: $(BUILD)/b $(BUILD)/btest
+all: $(BUILD)/b $(BUILD)/btest $(BUILD)/libb/
 
 .PHONY: test
-test: $(BUILD)/b $(BUILD)/btest
+test: $(BUILD)/b $(BUILD)/btest $(BUILD)/libb/
 	$(BUILD)/btest
 
 .PHONY: mingw32-all
-mingw32-all: $(BUILD)/b.exe $(BUILD)/btest.exe
+mingw32-all: $(BUILD)/b.exe $(BUILD)/btest.exe $(BUILD)/libb/
 
 $(BUILD)/b: $(RSS) $(POSIX_OBJS) $(SRC)/codegen/.INDEX.rs | $(BUILD)
 	rustc $(CRUST_FLAGS) -L $(BUILD) -C link-args="$(POSIX_OBJS) $(LDFLAGS)" $(SRC)/b.rs -o $(BUILD)/b
@@ -68,10 +68,10 @@ $(BUILD)/btest: $(SRC)/btest.rs $(RSS) $(POSIX_OBJS) $(SRC)/codegen/.INDEX.rs | 
 	rustc $(CRUST_FLAGS) -C link-args="$(POSIX_OBJS) $(LDFLAGS)" $(SRC)/btest.rs -o $(BUILD)/btest
 
 ifneq ($(OS),Windows_NT)
-$(SRC)/codegen/.INDEX.rs: $(BUILD)/bgen $(SRC)/codegen
+$(SRC)/codegen/.INDEX.rs $(BUILD)/libb/ &: $(BUILD)/bgen $(SRC)/codegen ./libb/
 	$(BUILD)/bgen
 else
-$(SRC)/codegen/.INDEX.rs: $(BUILD)/bgen.exe $(SRC)/codegen
+$(SRC)/codegen/.INDEX.rs $(BUILD)/libb/ &: $(BUILD)/bgen.exe $(SRC)/codegen ./libb/
 	$(BUILD)/bgen.exe
 endif
 

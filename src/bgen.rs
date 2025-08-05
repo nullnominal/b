@@ -18,9 +18,31 @@ use nob::*;
 use crust::libc::*;
 use crust::*;
 
+pub unsafe fn aggregate_libb(children: *mut File_Paths) -> Option<()> {
+    if !mkdir_if_not_exists(c!("./build/libb/")) { return None; }
+
+    if !read_entire_dir(c!("./libb/"), children) { return None; }
+
+    for i in 0..(*children).count {
+        let child = *(*children).items.add(i);
+        if *child == '.' as c_char { continue; }
+        if !copy_file(
+            temp_sprintf(c!("./libb/%s"), child),
+            temp_sprintf(c!("./build/libb/%s"), child),
+        ) { return None; }
+    }
+    Some(())
+}
+
 pub unsafe fn main(mut _argc: i32, mut _argv: *mut*mut c_char) -> Option<()> {
-    let parent = c!("./src/codegen");
     let mut children: File_Paths = zeroed();
+
+    if !mkdir_if_not_exists(c!("./build/")) { return None; }
+
+    aggregate_libb(&mut children)?;
+
+    let parent = c!("./src/codegen");
+    children.count = 0;
     if !read_entire_dir(parent, &mut children) { return None; }
     qsort(children.items as *mut c_void, children.count, size_of::<*const c_char>(), compar_cstr);
     let mut sb: String_Builder = zeroed();
