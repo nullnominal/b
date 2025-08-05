@@ -1,3 +1,7 @@
+//! The meta-program that analyses <root>/src/codegen/ folder and makes the custom pluggable codegens
+//! available to b and btest.
+//!
+//! Rust's proc macros suck btw jfyi
 #![no_main]
 #![no_std]
 #![allow(non_upper_case_globals)]
@@ -42,7 +46,7 @@ pub unsafe fn main(mut _argc: i32, mut _argv: *mut*mut c_char) -> Option<()> {
     if !read_entire_dir(parent, &mut children) { return None; }
     qsort(children.items as *mut c_void, children.count, size_of::<*const c_char>(), compar_cstr);
     let mut sb: String_Builder = zeroed();
-    printf(c!("CODEGENS:\n"));
+    log(Log_Level::INFO, c!("CODEGENS:"));
     sb_appendf(&mut sb, c!("codegens! {\n"));
     for i in 0..children.count {
         let child = *children.items.add(i);
@@ -53,7 +57,7 @@ pub unsafe fn main(mut _argc: i32, mut _argv: *mut*mut c_char) -> Option<()> {
         //   In any case we should do something with the invalid module names.
         let child = temp_strip_suffix(child, c!(".rs")).unwrap_or(child);
         sb_appendf(&mut sb, c!("    %s,\n"), child);
-        printf(c!("    %s\n"), child);
+        log(Log_Level::INFO, c!("    %s"), child);
     }
     sb_appendf(&mut sb, c!("}\n"));
     let output_path = temp_sprintf(c!("%s/.INDEX.rs"), parent);
