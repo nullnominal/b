@@ -18,16 +18,16 @@ use nob::*;
 use crust::libc::*;
 use crust::*;
 
-pub unsafe fn aggregate_libb(children: *mut File_Paths) -> Option<()> {
-    if !mkdir_if_not_exists(c!("./build/libb/")) { return None; }
+pub unsafe fn aggregate_libb(folder_path: *const c_char) -> Option<()> {
+    let mut children: File_Paths = zeroed();
 
-    if !read_entire_dir(c!("./libb/"), children) { return None; }
+    if !read_entire_dir(folder_path, &mut children) { return None; }
 
-    for i in 0..(*children).count {
-        let child = *(*children).items.add(i);
+    for i in 0..children.count {
+        let child = *children.items.add(i);
         if *child == '.' as c_char { continue; }
         if !copy_file(
-            temp_sprintf(c!("./libb/%s"), child),
+            temp_sprintf(c!("%s/%s"), folder_path, child),
             temp_sprintf(c!("./build/libb/%s"), child),
         ) { return None; }
     }
@@ -35,18 +35,16 @@ pub unsafe fn aggregate_libb(children: *mut File_Paths) -> Option<()> {
 }
 
 pub unsafe fn main(mut _argc: i32, mut _argv: *mut*mut c_char) -> Option<()> {
-    let mut children: File_Paths = zeroed();
-
     if !mkdir_if_not_exists(c!("./build/")) { return None; }
+    if !mkdir_if_not_exists(c!("./build/libb/")) { return None; }
 
-    aggregate_libb(&mut children)?;
+    aggregate_libb(c!("./libb/"))?;
 
     let parent = c!("./src/codegen");
-    children.count = 0;
+    let mut children: File_Paths = zeroed();
     if !read_entire_dir(parent, &mut children) { return None; }
     qsort(children.items as *mut c_void, children.count, size_of::<*const c_char>(), compar_cstr);
     let mut sb: String_Builder = zeroed();
-    log(Log_Level::INFO, c!("CODEGENS:"));
     sb_appendf(&mut sb, c!("codegens! {\n"));
     for i in 0..children.count {
         let child = *children.items.add(i);
@@ -55,9 +53,17 @@ pub unsafe fn main(mut _argc: i32, mut _argv: *mut*mut c_char) -> Option<()> {
         // TODO: skip the modules that have invalid Rust names.
         //   Or is there any way to accomodate them into the Rust module system too?
         //   In any case we should do something with the invalid module names.
-        let child = temp_strip_suffix(child, c!(".rs")).unwrap_or(child);
-        sb_appendf(&mut sb, c!("    %s,\n"), child);
-        log(Log_Level::INFO, c!("    %s"), child);
+        if let Some(child) = temp_strip_suffix(child, c!(".rs")) {
+            sb_appendf(&mut sb, c!("    %s,\n"), child);
+            log(Log_Level::INFO, c!("--- CODEGEN %s ---"), child);
+        } else {
+            sb_appendf(&mut sb, c!("    %s,\n"), child);
+            log(Log_Level::INFO, c!("--- CODEGEN %s ---"), child);
+            let codegen_libb = temp_sprintf(c!("%s/%s/libb/"), parent, child);
+            if file_exists(codegen_libb)? {
+                aggregate_libb(codegen_libb)?;
+            }
+        }
     }
     sb_appendf(&mut sb, c!("}\n"));
     let output_path = temp_sprintf(c!("%s/.INDEX.rs"), parent);
