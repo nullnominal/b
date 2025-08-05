@@ -1214,6 +1214,7 @@ pub unsafe fn main(mut argc: i32, mut argv: *mut*mut c_char) -> Option<()> {
     };
 
     let target_name = flag_str(c!("t"), default_target_name, c!("Compilation target. Pass \"list\" to get the list of available targets."));
+    let tlist       = flag_bool(c!("tlist"), false, temp_sprintf(c!("Same as `-%s list`. Prints the list of available targets."), flag_name(target_name)));
     let output_path = flag_str(c!("o"), ptr::null(), c!("Output path"));
     let run         = flag_bool(c!("run"), false, c!("Run the compiled program (if applicable for the target)"));
     let nobuild  = flag_bool(c!("nobuild"), false, temp_sprintf(c!("Skip the build step. Useful in conjunction with the -%s flag when you already have a built program and just want to run it on the specified target without rebuilding it."), flag_name(run)));
@@ -1264,7 +1265,7 @@ pub unsafe fn main(mut argc: i32, mut argv: *mut*mut c_char) -> Option<()> {
         return None;
     }
 
-    if strcmp(*target_name, c!("list")) == 0 {
+    if strcmp(*target_name, c!("list")) == 0 || *tlist {
         print_available_targets(da_slice(targets));
         return Some(());
     }
