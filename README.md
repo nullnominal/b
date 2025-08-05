@@ -56,15 +56,7 @@ Copy the `build/posix6502` executable somewhere were the `$PATH` points at.
 
 ### ilasm-mono
 
-This target tries to produce [.NET](https://dotnet.microsoft.com/en-us/)/[Mono](https://www.mono-project.com/) compatible binaries. It's currently a work-in-progress and does not have anything useful implemented in it.
-
-The compiler toolchain expects `ilasm` and `mono` executables available in the `$PATH` environment variables. Lots of Linux distros make them available via the mono packages in their official repos:
-
-```consols
-$ sudo xbps-install mono      # Void Linux
-$ sudo apt install mono-devel # Ubuntu
-...
-```
+See [https://github.com/bext-lang/dotnet-mono/](https://github.com/bext-lang/dotnet-mono/)
 
 ## Contribution
 
