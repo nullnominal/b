@@ -20,3 +20,12 @@ $ ./build/b -t ilasm-mono ./examples/hello_world.b -run
 ```
 
 For an example of a minimal pluggable codegen see `<root>/src/codegen/noop.rs`.
+
+## The Pluggable Codegen Format™
+
+A pluggable codegen is a usually a valid [git repo](https://git-scm.com/book/en/v2/Git-Basics-Getting-a-Git-Repository) and a valid [Rust module](https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html) simultaneously. This is what enables just `git clone`-ing it into `<root>/src/codegen`.
+
+On top of being a Rust module the Codegen is allowed to have additional special folders and files.
+
+- `<codegen_root>/libb/*` - a collection of libb implementation for all the targets codegen provides. All such folders for all codegens are automatically detected by the build system and aggregated into `<root>/build/libb/*` so all of them are available to the B compiler.
+- *To be continued...*
